@@ -1,11 +1,9 @@
-
-The 5 CBMS institutional tables are already built into the code.
 """)
 st.stop()
 
 df = preprocess(df_raw)
 
-with st.expander("🔍 Data Summary", expanded=False):
+with st.expander("Data Summary", expanded=False):
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Total Records", f"{len(df):,}")
 c2.metric("Barangays", df['barangay'].nunique() if 'barangay' in df.columns else 0)
@@ -29,7 +27,7 @@ st.dataframe(df.head(5), use_container_width=True)
 # ============================================================
 # SIDEBAR
 # ============================================================
-st.sidebar.header("⚙️ Analysis Controls")
+st.sidebar.header("Analysis Controls")
 
 barangay_filter = st.sidebar.multiselect(
 "Filter by Barangay:",
@@ -47,7 +45,6 @@ k_clusters = st.sidebar.slider("K-Means: number of clusters", 2, 6, 3)
 min_support = st.sidebar.slider("Apriori: min support", 0.05, 0.50, 0.15, 0.05)
 min_confidence = st.sidebar.slider("Apriori: min confidence", 0.3, 1.0, 0.6, 0.05)
 
-# Apply filters
 df_f = df.copy()
 if barangay_filter and 'barangay' in df_f.columns:
 df_f = df_f[df_f['barangay'].isin(barangay_filter)]
@@ -55,7 +52,7 @@ if tribe_filter and 'tribe' in df_f.columns:
 df_f = df_f[df_f['tribe'].isin(tribe_filter)]
 
 if len(df_f) < 20:
-st.warning("⚠️ Too few records after filtering. Adjust the sidebar filters.")
+st.warning("Too few records after filtering. Adjust the sidebar filters.")
 st.stop()
 
 
@@ -63,10 +60,10 @@ st.stop()
 # TABS
 # ============================================================
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-"📊 Overview", "📈 EDA",
-"🎯 K-Means Clustering",
-"🔗 Apriori Rules",
-"💡 Recommendations"
+"Overview", "EDA",
+"K-Means Clustering",
+"Apriori Rules",
+"Recommendations"
 ])
 
 
@@ -74,7 +71,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 # TAB 1: OVERVIEW
 # ------------------------------------------------------------
 with tab1:
-st.header("📊 Executive Overview")
+st.header("Executive Overview")
 
 c1, c2, c3, c4 = st.columns(4)
 c1.markdown(f'<div class="metric-card"><p>Respondents</p><h2>{len(df_f):,}</h2></div>', unsafe_allow_html=True)
@@ -83,7 +80,7 @@ c3.markdown(f'<div class="metric-card"><p>Tribes</p><h2>{df_f["tribe"].nunique()
 c4.markdown(f'<div class="metric-card"><p>Service Types</p><h2>{df_f["service_type"].nunique() if "service_type" in df_f.columns else 0}</h2></div>', unsafe_allow_html=True)
 
 st.markdown("---")
-st.subheader("📌 Respondents per Barangay")
+st.subheader("Respondents per Barangay")
 if 'barangay' in df_f.columns:
     fig, ax = plt.subplots(figsize=(10, 4))
     df_f['barangay'].value_counts().plot(kind='bar', color='#1f4e79', edgecolor='black', ax=ax)
@@ -94,7 +91,7 @@ if 'barangay' in df_f.columns:
     st.pyplot(fig)
     plt.close()
 
-st.subheader("🌱 Indigenous Group Distribution")
+st.subheader("Indigenous Group Distribution")
 if 'tribe' in df_f.columns:
     col1, col2 = st.columns(2)
     with col1:
@@ -114,9 +111,9 @@ if 'tribe' in df_f.columns:
 # TAB 2: EDA
 # ------------------------------------------------------------
 with tab2:
-st.header("📈 Exploratory Data Analysis")
+st.header("Exploratory Data Analysis")
 
-st.subheader("👥 Socio-Demographic Profile")
+st.subheader("Socio-Demographic Profile")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -168,7 +165,7 @@ with col4:
         plt.close()
 
 st.markdown("---")
-st.subheader("💰 Household Income")
+st.subheader("Household Income")
 if 'income_weekly' in df_f.columns:
     inc = df_f['income_weekly'].dropna()
     if len(inc) > 0:
@@ -178,7 +175,7 @@ if 'income_weekly' in df_f.columns:
             ax.hist(inc, bins=15, color='#9b59b6', edgecolor='black')
             ax.set_xlabel("Weekly Income (PHP)")
             ax.set_ylabel("Frequency")
-            ax.set_title(f"Weekly Household Income (mean = ₱{inc.mean():.0f})")
+            ax.set_title(f"Weekly Household Income (mean = PHP {inc.mean():.0f})")
             plt.tight_layout()
             st.pyplot(fig)
             plt.close()
@@ -188,7 +185,7 @@ if 'income_weekly' in df_f.columns:
                          use_container_width=True)
 
 st.markdown("---")
-st.subheader("🏘️ Barangay-level Service Access (CBMS Institutional)")
+st.subheader("Barangay-level Service Access (CBMS Institutional)")
 cbms = get_cbms_tables()
 
 tab_a, tab_b, tab_c, tab_d, tab_e = st.tabs([
@@ -207,7 +204,7 @@ with tab_e:
     st.dataframe(cbms['bayanihan'], use_container_width=True)
 
 st.markdown("---")
-st.subheader("🚧 Barriers to Service Access")
+st.subheader("Barriers to Service Access")
 
 barrier_cols = ['financial_barrier', 'distance_barrier', 'language_barrier', 'info_barrier']
 available_barriers = [c for c in barrier_cols if c in df_f.columns]
@@ -232,10 +229,9 @@ if available_barriers:
 # TAB 3: K-MEANS
 # ------------------------------------------------------------
 with tab3:
-st.header("🎯 K-Means Clustering — Service Access Patterns")
+st.header("K-Means Clustering: Service Access Patterns")
 st.caption("Groups households by similar socio-economic profile and access characteristics.")
 
-# ---- Build feature matrix ----
 feature_frame = pd.DataFrame(index=df_f.index)
 
 if 'age' in df_f.columns:
@@ -247,7 +243,6 @@ if 'income_weekly' in df_f.columns:
 if 'time_spent_hours' in df_f.columns:
     feature_frame['time_spent_hours'] = df_f['time_spent_hours']
 
-# Encode categorical features
 cat_features = ['gender', 'education_level', 'employment_status',
                 'access_transportation', 'access_electricity', 'access_internet',
                 'service_frequency_clean', 'civil_status']
@@ -258,7 +253,6 @@ for col in cat_features:
         vals = df_f[col].astype(str).fillna('Unknown')
         feature_frame[col + '_enc'] = le.fit_transform(vals)
 
-# Drop rows with any NaN
 feature_frame = feature_frame.dropna()
 
 if len(feature_frame) < k_clusters * 2:
@@ -267,7 +261,6 @@ else:
     scaler = StandardScaler()
     X_scaled = scaler.fit_transform(feature_frame)
 
-    # ---- K-Means ----
     kmeans = KMeans(n_clusters=k_clusters, random_state=42, n_init=10)
     labels = kmeans.fit_predict(X_scaled)
 
@@ -281,13 +274,12 @@ else:
     c4.metric("Davies-Bouldin Index", f"{dbi:.4f}")
 
     st.caption(
-        f"**Interpretation:** Silhouette closer to **+1.0** = better-separated clusters. "
+        f"**Interpretation:** Silhouette closer to **+1.0** means better-separated clusters. "
         f"Score of **{sil:.4f}** suggests "
         f"{'excellent' if sil > 0.7 else 'acceptable' if sil > 0.5 else 'weak' if sil > 0.25 else 'poor'} "
-        f"cluster quality. Lower DBI (closer to 0) = better separation."
+        f"cluster quality. Lower DBI (closer to 0) means better separation."
     )
 
-    # ---- PCA plot ----
     pca = PCA(n_components=2, random_state=42)
     X_pca = pca.fit_transform(X_scaled)
 
@@ -318,9 +310,8 @@ else:
         st.pyplot(fig)
         plt.close()
 
-    # ---- Elbow curve for reference ----
     st.markdown("---")
-    st.subheader("📐 Elbow Method (WCSS) — Reference")
+    st.subheader("Elbow Method (WCSS)")
     wcss = []
     max_k = min(10, len(feature_frame) - 1)
     for k in range(1, max_k + 1):
@@ -332,30 +323,30 @@ else:
     ax.axvline(k_clusters, color='red', linestyle='--', label=f'Chosen K = {k_clusters}')
     ax.set_xlabel("K")
     ax.set_ylabel("WCSS")
-    ax.set_title("Elbow Method — Within-Cluster Sum of Squares")
+    ax.set_title("Elbow Method: Within-Cluster Sum of Squares")
     ax.legend()
     ax.grid(alpha=0.3)
     plt.tight_layout()
     st.pyplot(fig)
     plt.close()
 
-    # ---- Cluster profiles ----
     st.markdown("---")
-    st.subheader("🔍 Cluster Profiles")
+    st.subheader("Cluster Profiles")
     cluster_df = feature_frame.copy()
     cluster_df['_cluster'] = labels
     cluster_df['_barangay'] = df_f.loc[feature_frame.index, 'barangay'].values
-    cluster_df['_tribe'] = df_f.loc[feature_frame.index, 'tribe'].values if 'tribe' in df_f.columns else None
+    if 'tribe' in df_f.columns:
+        cluster_df['_tribe'] = df_f.loc[feature_frame.index, 'tribe'].values
 
     for c in sorted(cluster_df['_cluster'].unique()):
         sub = cluster_df[cluster_df['_cluster'] == c]
-        st.markdown(f"### 🔹 Cluster {c} — {len(sub)} respondents ({len(sub)/len(cluster_df)*100:.1f}%)")
+        st.markdown(f"### Cluster {c} - {len(sub)} respondents ({len(sub)/len(cluster_df)*100:.1f}%)")
 
         m1, m2, m3 = st.columns(3)
         if 'age' in sub.columns:
             m1.metric("Mean Age", f"{sub['age'].mean():.1f}")
         if 'income_weekly' in sub.columns:
-            m2.metric("Mean Weekly Income", f"₱{sub['income_weekly'].mean():.0f}")
+            m2.metric("Mean Weekly Income", f"PHP {sub['income_weekly'].mean():.0f}")
         if 'household_size' in sub.columns:
             m3.metric("Mean HH Size", f"{sub['household_size'].mean():.1f}")
 
@@ -365,16 +356,15 @@ else:
             st.dataframe(sub['_barangay'].value_counts().head(5).rename('Count'),
                          use_container_width=True)
         with col2:
-            if sub['_tribe'].notna().any():
+            if '_tribe' in sub.columns and sub['_tribe'].notna().any():
                 st.markdown("**Top Tribes in this Cluster:**")
                 st.dataframe(sub['_tribe'].value_counts().head(5).rename('Count'),
                              use_container_width=True)
 
         st.markdown("---")
 
-    # ---- Interpretation helper ----
-    st.markdown("### 🏷️ Cluster Interpretation")
-    st.caption("Based on your Chapter 3 — Cluster 1 = High Access, Cluster 2 = Moderate, Cluster 3 = Low")
+    st.markdown("### Cluster Interpretation")
+    st.caption("Based on your Chapter 3: Cluster 1 = High Access, Cluster 2 = Moderate, Cluster 3 = Low")
     for c in sorted(cluster_df['_cluster'].unique()):
         sub = cluster_df[cluster_df['_cluster'] == c]
         income_mean = sub['income_weekly'].mean() if 'income_weekly' in sub.columns else 0
@@ -384,17 +374,16 @@ else:
             label = "Moderate Access"
         else:
             label = "Low Access (Lower income, more barriers)"
-        st.markdown(f"- **Cluster {c}** → **{label}** (mean weekly income = ₱{income_mean:.0f})")
+        st.markdown(f"- **Cluster {c}** -> **{label}** (mean weekly income = PHP {income_mean:.0f})")
 
 
 # ------------------------------------------------------------
 # TAB 4: APRIORI
 # ------------------------------------------------------------
 with tab4:
-st.header("🔗 Apriori Association Rule Mining")
-st.caption("Discovers patterns like 'if respondent is in tribe X and has barrier Y, they access service Z'.")
+st.header("Apriori Association Rule Mining")
+st.caption("Discovers patterns like: if respondent is in tribe X and has barrier Y, they access service Z.")
 
-# Build transactions
 txn_cols = ['barangay', 'tribe', 'service_type', 'service_frequency_clean',
             'mode_of_access', 'financial_barrier', 'distance_barrier',
             'language_barrier', 'info_barrier', 'employment_status']
@@ -434,7 +423,7 @@ else:
             c2.metric("Min Support", f"{min_support:.3f}")
             c3.metric("Min Confidence", f"{min_confidence:.2f}")
 
-            st.subheader("📋 Top 15 Frequent Itemsets")
+            st.subheader("Top 15 Frequent Itemsets")
             top_itemsets = frequent.sort_values('support', ascending=False).head(15).copy()
             top_itemsets['itemsets'] = top_itemsets['itemsets'].apply(lambda x: ', '.join(sorted(x)))
             st.dataframe(top_itemsets, use_container_width=True)
@@ -448,7 +437,7 @@ else:
 
             if not rules.empty:
                 st.markdown("---")
-                st.subheader(f"📌 Top 15 Association Rules (out of {len(rules)})")
+                st.subheader(f"Top 15 Association Rules (out of {len(rules)})")
 
                 display = rules.head(15).copy()
                 display['antecedents'] = display['antecedents'].apply(lambda x: ', '.join(sorted(x)))
@@ -466,71 +455,61 @@ else:
                     "**Lift > 1** = positive association (better than random)."
                 )
 
-                # Download
                 dl_rules = rules.copy()
                 dl_rules['antecedents'] = dl_rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
                 dl_rules['consequents'] = dl_rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
                 st.download_button(
-                    "📥 Download Association Rules CSV",
+                    "Download Association Rules CSV",
                     dl_rules.to_csv(index=False).encode('utf-8'),
                     "apriori_rules.csv", "text/csv"
                 )
             else:
-                st.info(f"No rules found with confidence ≥ {min_confidence}. Lower the threshold.")
+                st.info(f"No rules found with confidence >= {min_confidence}. Lower the threshold.")
 
 
 # ------------------------------------------------------------
 # TAB 5: RECOMMENDATIONS
 # ------------------------------------------------------------
 with tab5:
-st.header("💡 Recommendations & Interpretation")
+st.header("Recommendations and Interpretation")
 
 st.markdown(f"""
-### 📊 Analysis Summary
+### Analysis Summary
 
 Based on **{len(df_f):,}** indigenous respondents across **{df_f['barangay'].nunique() if 'barangay' in df_f.columns else 0}** barangays in Bunawan, Agusan del Sur, using **K-Means Clustering** and **Apriori Association Rule Mining**.
 
 #### 1. For the Local Government Unit (LGU) of Bunawan
-- **Prioritize low-access clusters** identified in the K-Means tab — they have the
-  lowest income and most barriers to accessing government services.
-- **Deploy mobile service units** to remote barangays where distance and transportation
-  barriers are most frequent.
-- **Allocate social assistance budgets** proportionally to high-need clusters,
-  using CBMS data as evidence.
+- **Prioritize low-access clusters** identified in the K-Means tab. They have the lowest income and most barriers to accessing government services.
+- **Deploy mobile service units** to remote barangays where distance and transportation barriers are most frequent.
+- **Allocate social assistance budgets** proportionally to high-need clusters, using CBMS data as evidence.
 
 #### 2. For the National Commission on Indigenous Peoples (NCIP)
-- Use cluster profiles to design **culturally appropriate interventions** that respect
-  the distinct needs of Manobo, Banwaon, and Talaandig households.
-- Align program delivery with the **Indigenous Peoples' Rights Act (IPRA)** and
-  Free, Prior, and Informed Consent (FPIC) principles.
+- Use cluster profiles to design **culturally appropriate interventions** that respect the distinct needs of Manobo, Banwaon, and Talaandig households.
+- Align program delivery with the **Indigenous Peoples Rights Act (IPRA)** and Free, Prior, and Informed Consent (FPIC) principles.
 
 #### 3. For Government Agencies (DSWD, DOLE, DA, DTI)
-- **Coordinate** program delivery to avoid duplicating benefits in high-access clusters
-  while leaving low-access clusters underserved.
+- **Coordinate** program delivery to avoid duplicating benefits in high-access clusters while leaving low-access clusters underserved.
 - **Translate program materials** into local languages to reduce language barriers.
 
 #### 4. For Indigenous Communities
-- **Engage** with barangay officials for a more transparent picture of available
-  programs and how to access them.
+- **Engage** with barangay officials for a more transparent picture of available programs and how to access them.
 - **Participate in community consultations** that shape locally responsive policies.
 
 #### 5. For Future Researchers
 - **Extend** with Random Forest, XGBoost, or Neural Networks for predictive modeling.
 - **Add geospatial analysis** (GIS) to visualize service access across barangays.
-- **Longitudinal studies** to track changes in service access over time (2022–2026).
-- **Qualitative interviews** to complement the quantitative clusters with lived
-  experiences of the indigenous community.
+- **Longitudinal studies** to track changes in service access over time (2022-2026).
+- **Qualitative interviews** to complement the quantitative clusters with lived experiences of the indigenous community.
 
 #### 6. Limitations
-- Only **reported** respondents are analyzed — the actual population is larger.
-- Cluster results depend on the **22 variables** collected; missing variables may
-  hide barriers.
+- Only **reported** respondents are analyzed. The actual population is larger.
+- Cluster results depend on the **22 variables** collected; missing variables may hide barriers.
 - Cross-sectional design limits causal inference.
 - Findings specific to Bunawan; may not generalize to other municipalities.
 """)
 
 st.markdown("---")
-st.subheader("📥 Download Results")
+st.subheader("Download Results")
 try:
     summary = pd.DataFrame({
         'Metric': ['Total Respondents', 'Barangays', 'Tribes', 'K-Means K'],
@@ -542,7 +521,7 @@ try:
         ]
     })
     st.download_button(
-        "📊 Download Summary CSV",
+        "Download Summary CSV",
         summary.to_csv(index=False).encode('utf-8'),
         "indigenous_access_summary.csv", "text/csv"
     )
@@ -555,7 +534,7 @@ except Exception:
 # ============================================================
 st.markdown("---")
 st.caption(
-"🎓 Capstone Dashboard • Analysis of Service Access Patterns Among Indigenous Communities "
-"in Bunawan, Agusan del Sur Using Data Mining • "
-"Falcasantos, K.M.P. & Adrales, K.J. • Agusan del Sur State University • 2026"
+"Capstone Dashboard | Analysis of Service Access Patterns Among Indigenous Communities "
+"in Bunawan, Agusan del Sur Using Data Mining | "
+"Falcasantos, K.M.P. and Adrales, K.J. | Agusan del Sur State University | 2026"
 )

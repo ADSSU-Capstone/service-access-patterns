@@ -60,6 +60,29 @@ st.markdown("""
 
 
 # ============================================================
+# HELPERS
+# ============================================================
+def safe_str(val):
+    """Convert any value to a clean string, handling NaN/None/pd.NA."""
+    if val is None:
+        return ''
+    try:
+        if pd.isna(val):
+            return ''
+    except (TypeError, ValueError):
+        pass
+    return str(val).strip()
+
+
+def safe_lower(val):
+    return safe_str(val).lower()
+
+
+def is_blank(val):
+    return safe_lower(val) in ('', 'nan', 'none', 'nat', 'null', '<na>')
+
+
+# ============================================================
 # CBMS INSTITUTIONAL TABLES (hardcoded)
 # ============================================================
 def get_cbms_tables():
@@ -144,7 +167,7 @@ def get_cbms_tables():
 
 
 # ============================================================
-# DATA LOADING
+# COLUMN ALIASES
 # ============================================================
 COLUMN_ALIASES = {
     'year': 'year',
@@ -178,7 +201,7 @@ COLUMN_ALIASES = {
 
 def _normalize_columns(df):
     df = df.copy()
-    df.columns = [str(c).strip().replace('\ufeff', '').lower() for c in df.columns]
+    df.columns = [safe_str(c).replace('\ufeff', '').lower() for c in df.columns]
     df = df.rename(columns={c: COLUMN_ALIASES.get(c, c) for c in df.columns})
     df = df.loc[:, ~df.columns.duplicated(keep='first')]
     return df
@@ -219,40 +242,51 @@ def load_household_data():
 
 
 # ============================================================
-# PREPROCESSING
+# PREPROCESSING HELPERS
 # ============================================================
 def _clean_age(val):
-    if pd.isna(val):
+    if val is None:
         return np.nan
     try:
-        s = str(val).replace('/', ' ').strip()
-        for token in s.split():
-            if token.isdigit() and 0 < int(token) < 120:
-                return int(token)
-        return np.nan
-    except Exception:
-        return np.nan
+        if pd.isna(val):
+            return np.nan
+    except (TypeError, ValueError):
+        pass
+    s = safe_str(val).replace('/', ' ')
+    for token in s.split():
+        if token.isdigit() and 0 < int(token) < 120:
+            return int(token)
+    return np.nan
 
 
 def _clean_income(val):
-    if pd.isna(val):
+    if val is None:
         return np.nan
     try:
-        import re
-        s = str(val).lower().replace(',', '').strip()
-        m = re.search(r'(\d+(?:\.\d+)?)', s)
-        if m:
-            return float(m.group(1))
-        return np.nan
-    except Exception:
-        return np.nan
+        if pd.isna(val):
+            return np.nan
+    except (TypeError, ValueError):
+        pass
+    import re
+    s = safe_str(val).lower().replace(',', '')
+    m = re.search(r'(\d+(?:\.\d+)?)', s)
+    if m:
+        return float(m.group(1))
+    return np.nan
 
 
 def _clean_frequency(val):
-    if pd.isna(val):
+    if val is None:
         return None
-    s = str(val).strip().lower()
-    if s in ('no access', 'none', ''):
+    try:
+        if pd.isna(val):
+            return None
+    except (TypeError, ValueError):
+        pass
+    s = safe_str(val).lower()
+    if s in ('', 'nan', 'none'):
+        return None
+    if s in ('no access',):
         return 'None'
     if 'full' in s:
         return 'Full'
@@ -264,26 +298,31 @@ def _clean_frequency(val):
 
 
 def _clean_time_spent(val):
-    if pd.isna(val):
+    if val is None:
         return np.nan
     try:
-        s = str(val).lower().replace('-', ' ').strip()
-        nums = []
-        for token in s.split():
-            try:
-                nums.append(float(token))
-            except ValueError:
-                continue
-        if not nums:
+        if pd.isna(val):
             return np.nan
-        avg = np.mean(nums)
-        if 'day' in s:
-            return avg * 24
-        return avg
-    except Exception:
+    except (TypeError, ValueError):
+        pass
+    s = safe_str(val).lower().replace('-', ' ')
+    nums = []
+    for token in s.split():
+        try:
+            nums.append(float(token))
+        except ValueError:
+            continue
+    if not nums:
         return np.nan
+    avg = float(np.mean(nums))
+    if 'day' in s:
+        return avg * 24
+    return avg
 
 
+# ============================================================
+# PREPROCESS
+# ============================================================
 @st.cache_data(show_spinner=True)
 def preprocess(df):
     df = df.copy()
@@ -300,27 +339,36 @@ def preprocess(df):
     if 'service_frequency' in df.columns:
         df['service_frequency_clean'] = df['service_frequency'].apply(_clean_frequency)
 
-    for col in ['gender', 'barangay', 'tribe', 'employment_status',
-                'education_level', 'civil_status', 'access_transportation',
-                'access_electricity', 'access_internet', 'service_type',
-                'mode_of_access', 'financial_barrier', 'distance_barrier',
-                'language_barrier', 'info_barrier']:
+    # Force all categorical columns to clean strings
+    categorical_cols = [
+        'gender', 'barangay', 'tribe', 'employment_status',
+        'education_level', 'civil_status', 'access_transportation',
+        'access_electricity', 'access_internet', 'service_type',
+        'mode_of_access', 'financial_barrier', 'distance_barrier',
+        'language_barrier', 'info_barrier', 'service_frequency_clean'
+    ]
+
+    for col in categorical_cols:
         if col in df.columns:
-            df[col] = df[col].astype(str).str.strip().str.title()
-            df[col] = df[col].replace({'Nan': None, 'None': None, '': None})
+            df[col] = df[col].apply(
+                lambda x: safe_str(x).title() if not is_blank(x) else None
+            )
 
     if 'barangay' in df.columns:
-        df['barangay'] = df['barangay'].replace({
-            'Bunawan Brok': 'Bunawan Brook',
-            'Lmelda': 'Imelda',
-        })
+        df['barangay'] = df['barangay'].apply(
+            lambda x: 'Bunawan Brook' if safe_str(x) == 'Bunawan Brok' else x
+        )
+        df['barangay'] = df['barangay'].apply(
+            lambda x: 'Imelda' if safe_str(x).lower() in ('lmelda', 'imelda') else x
+        )
 
     if 'gender' in df.columns:
-        df['gender'] = df['gender'].replace({'Famale': 'Female'})
+        df['gender'] = df['gender'].apply(
+            lambda x: 'Female' if safe_str(x) == 'Famale' else x
+        )
 
     if 'barangay' in df.columns:
-        df = df.dropna(subset=['barangay'])
-        df = df[df['barangay'].astype(str).str.len() > 0]
+        df = df[df['barangay'].apply(lambda x: not is_blank(x))]
 
     return df
 
@@ -369,22 +417,35 @@ with st.expander("Data Summary", expanded=False):
 # ============================================================
 st.sidebar.header("Analysis Controls")
 
+# Safe barangay filter
+if 'barangay' in df.columns:
+    barangay_options = sorted(df['barangay'].dropna().unique().tolist())
+else:
+    barangay_options = []
+
 barangay_filter = st.sidebar.multiselect(
     "Filter by Barangay:",
-    options=sorted(df['barangay'].dropna().unique()) if 'barangay' in df.columns else [],
-    default=sorted(df['barangay'].dropna().unique()) if 'barangay' in df.columns else []
+    options=barangay_options,
+    default=barangay_options
 )
+
+# Safe tribe filter
+if 'tribe' in df.columns:
+    tribe_options = sorted(df['tribe'].dropna().unique().tolist())
+else:
+    tribe_options = []
 
 tribe_filter = st.sidebar.multiselect(
     "Filter by Tribe:",
-    options=sorted(df['tribe'].dropna().unique()) if 'tribe' in df.columns else [],
-    default=sorted(df['tribe'].dropna().unique()) if 'tribe' in df.columns else []
+    options=tribe_options,
+    default=tribe_options
 )
 
 k_clusters = st.sidebar.slider("K-Means: number of clusters", 2, 6, 3)
 min_support = st.sidebar.slider("Apriori: min support", 0.05, 0.50, 0.15, 0.05)
 min_confidence = st.sidebar.slider("Apriori: min confidence", 0.3, 1.0, 0.6, 0.05)
 
+# Apply filters safely
 df_f = df.copy()
 if barangay_filter and 'barangay' in df_f.columns:
     df_f = df_f[df_f['barangay'].isin(barangay_filter)]
@@ -413,15 +474,20 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.header("Executive Overview")
 
+    n_respondents = len(df_f)
+    n_barangays = df_f['barangay'].nunique() if 'barangay' in df_f.columns else 0
+    n_tribes = df_f['tribe'].nunique() if 'tribe' in df_f.columns else 0
+    n_services = df_f['service_type'].nunique() if 'service_type' in df_f.columns else 0
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f'<div class="metric-card"><p>Respondents</p><h2>{len(df_f):,}</h2></div>', unsafe_allow_html=True)
-    c2.markdown(f'<div class="metric-card"><p>Barangays</p><h2>{df_f["barangay"].nunique() if "barangay" in df_f.columns else 0}</h2></div>', unsafe_allow_html=True)
-    c3.markdown(f'<div class="metric-card"><p>Tribes</p><h2>{df_f["tribe"].nunique() if "tribe" in df_f.columns else 0}</h2></div>', unsafe_allow_html=True)
-    c4.markdown(f'<div class="metric-card"><p>Service Types</p><h2>{df_f["service_type"].nunique() if "service_type" in df_f.columns else 0}</h2></div>', unsafe_allow_html=True)
+    c1.markdown(f'<div class="metric-card"><p>Respondents</p><h2>{n_respondents:,}</h2></div>', unsafe_allow_html=True)
+    c2.markdown(f'<div class="metric-card"><p>Barangays</p><h2>{n_barangays}</h2></div>', unsafe_allow_html=True)
+    c3.markdown(f'<div class="metric-card"><p>Tribes</p><h2>{n_tribes}</h2></div>', unsafe_allow_html=True)
+    c4.markdown(f'<div class="metric-card"><p>Service Types</p><h2>{n_services}</h2></div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("Respondents per Barangay")
-    if 'barangay' in df_f.columns:
+    if 'barangay' in df_f.columns and n_barangays > 0:
         fig, ax = plt.subplots(figsize=(10, 4))
         df_f['barangay'].value_counts().plot(kind='bar', color='#1f4e79', edgecolor='black', ax=ax)
         ax.set_ylabel("Respondents")
@@ -432,7 +498,7 @@ with tab1:
         plt.close()
 
     st.subheader("Indigenous Group Distribution")
-    if 'tribe' in df_f.columns:
+    if 'tribe' in df_f.columns and n_tribes > 0:
         col1, col2 = st.columns(2)
         with col1:
             fig, ax = plt.subplots(figsize=(6, 4))
@@ -442,9 +508,12 @@ with tab1:
             st.pyplot(fig)
             plt.close()
         with col2:
-            st.dataframe(df_f['tribe'].value_counts().rename('Count').to_frame().assign(
-                Percentage=lambda d: (d['Count'] / d['Count'].sum() * 100).round(2)
-            ), use_container_width=True)
+            st.dataframe(
+                df_f['tribe'].value_counts().rename('Count').to_frame().assign(
+                    Percentage=lambda d: (d['Count'] / d['Count'].sum() * 100).round(2)
+                ),
+                use_container_width=True
+            )
 
 
 # ------------------------------------------------------------
@@ -471,38 +540,41 @@ with tab2:
 
     with col2:
         if 'gender' in df_f.columns:
-            vc = df_f['gender'].value_counts()
-            fig, ax = plt.subplots(figsize=(7, 4))
-            vc.plot(kind='bar', color='#27ae60', edgecolor='black', ax=ax)
-            ax.set_ylabel("Respondents")
-            ax.set_title("Gender Distribution")
-            plt.xticks(rotation=0)
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+            vc = df_f['gender'].dropna().value_counts()
+            if len(vc) > 0:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                vc.plot(kind='bar', color='#27ae60', edgecolor='black', ax=ax)
+                ax.set_ylabel("Respondents")
+                ax.set_title("Gender Distribution")
+                plt.xticks(rotation=0)
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
 
     col3, col4 = st.columns(2)
     with col3:
         if 'education_level' in df_f.columns:
-            vc = df_f['education_level'].value_counts().head(8)
-            fig, ax = plt.subplots(figsize=(7, 4))
-            vc.sort_values().plot(kind='barh', color='#3498db', edgecolor='black', ax=ax)
-            ax.set_xlabel("Respondents")
-            ax.set_title("Education Level")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+            vc = df_f['education_level'].dropna().value_counts().head(8)
+            if len(vc) > 0:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                vc.sort_values().plot(kind='barh', color='#3498db', edgecolor='black', ax=ax)
+                ax.set_xlabel("Respondents")
+                ax.set_title("Education Level")
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
 
     with col4:
         if 'employment_status' in df_f.columns:
-            vc = df_f['employment_status'].value_counts().head(8)
-            fig, ax = plt.subplots(figsize=(7, 4))
-            vc.sort_values().plot(kind='barh', color='#e67e22', edgecolor='black', ax=ax)
-            ax.set_xlabel("Respondents")
-            ax.set_title("Employment Status")
-            plt.tight_layout()
-            st.pyplot(fig)
-            plt.close()
+            vc = df_f['employment_status'].dropna().value_counts().head(8)
+            if len(vc) > 0:
+                fig, ax = plt.subplots(figsize=(7, 4))
+                vc.sort_values().plot(kind='barh', color='#e67e22', edgecolor='black', ax=ax)
+                ax.set_xlabel("Respondents")
+                ax.set_title("Employment Status")
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
 
     st.markdown("---")
     st.subheader("Household Income")
@@ -590,7 +662,7 @@ with tab3:
     for col in cat_features:
         if col in df_f.columns:
             le = LabelEncoder()
-            vals = df_f[col].astype(str).fillna('Unknown')
+            vals = df_f[col].apply(safe_str)
             feature_frame[col + '_enc'] = le.fit_transform(vals)
 
     feature_frame = feature_frame.dropna()
@@ -614,8 +686,8 @@ with tab3:
         c4.metric("Davies-Bouldin Index", f"{dbi:.4f}")
 
         st.caption(
-            f"**Interpretation:** Silhouette closer to **+1.0** means better-separated clusters. "
-            f"Score of **{sil:.4f}** suggests "
+            f"Interpretation: Silhouette closer to +1.0 means better-separated clusters. "
+            f"Score of {sil:.4f} suggests "
             f"{'excellent' if sil > 0.7 else 'acceptable' if sil > 0.5 else 'weak' if sil > 0.25 else 'poor'} "
             f"cluster quality. Lower DBI (closer to 0) means better separation."
         )
@@ -674,9 +746,10 @@ with tab3:
         st.subheader("Cluster Profiles")
         cluster_df = feature_frame.copy()
         cluster_df['_cluster'] = labels
-        cluster_df['_barangay'] = df_f.loc[feature_frame.index, 'barangay'].values
+        cluster_df['_barangay'] = df_f.loc[feature_frame.index, 'barangay'].apply(safe_str).values \
+            if 'barangay' in df_f.columns else 'Unknown'
         if 'tribe' in df_f.columns:
-            cluster_df['_tribe'] = df_f.loc[feature_frame.index, 'tribe'].values
+            cluster_df['_tribe'] = df_f.loc[feature_frame.index, 'tribe'].apply(safe_str).values
 
         for c in sorted(cluster_df['_cluster'].unique()):
             sub = cluster_df[cluster_df['_cluster'] == c]
@@ -704,17 +777,19 @@ with tab3:
             st.markdown("---")
 
         st.markdown("### Cluster Interpretation")
-        st.caption("Based on your Chapter 3: Cluster 1 = High Access, Cluster 2 = Moderate, Cluster 3 = Low")
+        st.caption("Based on Chapter 3: Cluster 1 = High Access, Cluster 2 = Moderate, Cluster 3 = Low")
         for c in sorted(cluster_df['_cluster'].unique()):
             sub = cluster_df[cluster_df['_cluster'] == c]
             income_mean = sub['income_weekly'].mean() if 'income_weekly' in sub.columns else 0
+            if pd.isna(income_mean):
+                income_mean = 0
             if income_mean > 1000:
                 label = "High Access (Higher income, more resources)"
             elif income_mean > 700:
                 label = "Moderate Access"
             else:
                 label = "Low Access (Lower income, more barriers)"
-            st.markdown(f"- **Cluster {c}** -> **{label}** (mean weekly income = PHP {income_mean:.0f})")
+            st.markdown(f"- Cluster {c} -> **{label}** (mean weekly income = PHP {income_mean:.0f})")
 
 
 # ------------------------------------------------------------
@@ -733,21 +808,29 @@ with tab4:
     if not available_txn:
         st.warning("No suitable columns found for transaction encoding.")
     else:
-        transactions_df = df_f[available_txn].astype(str).copy()
-        transactions = transactions_df.values.tolist()
-        transactions = [
-            [f"{col}={val}" for col, val in zip(available_txn, row)
-             if val and val.lower() not in ('nan', 'none', '')]
-            for row in transactions
-        ]
-        transactions = [t for t in transactions if len(t) >= 2]
+        # Build transactions safely
+        transactions = []
+        for idx, row in df_f[available_txn].iterrows():
+            txn = []
+            for col in available_txn:
+                val = row[col]
+                val_str = safe_str(val)
+                if val_str == '' or val_str.lower() in ('nan', 'none', 'nat', 'null', '<na>'):
+                    continue
+                txn.append(f"{col}={val_str}")
+            if len(txn) >= 2:
+                transactions.append(txn)
 
         if len(transactions) < 20:
-            st.warning("Not enough transactions after filtering.")
+            st.warning(f"Not enough transactions after filtering. Only {len(transactions)} valid rows.")
         else:
-            te = TransactionEncoder()
-            te_ary = te.fit(transactions).transform(transactions)
-            basket = pd.DataFrame(te_ary, columns=te.columns_)
+            try:
+                te = TransactionEncoder()
+                te_ary = te.fit(transactions).transform(transactions)
+                basket = pd.DataFrame(te_ary, columns=te.columns_)
+            except Exception as e:
+                st.error(f"Transaction encoding failed: {e}")
+                st.stop()
 
             try:
                 frequent = apriori(basket, min_support=min_support, use_colnames=True)
@@ -765,7 +848,9 @@ with tab4:
 
                 st.subheader("Top 15 Frequent Itemsets")
                 top_itemsets = frequent.sort_values('support', ascending=False).head(15).copy()
-                top_itemsets['itemsets'] = top_itemsets['itemsets'].apply(lambda x: ', '.join(sorted(x)))
+                top_itemsets['itemsets'] = top_itemsets['itemsets'].apply(
+                    lambda x: ', '.join(sorted([safe_str(i) for i in x]))
+                )
                 st.dataframe(top_itemsets, use_container_width=True)
 
                 try:
@@ -780,8 +865,12 @@ with tab4:
                     st.subheader(f"Top 15 Association Rules (out of {len(rules)})")
 
                     display = rules.head(15).copy()
-                    display['antecedents'] = display['antecedents'].apply(lambda x: ', '.join(sorted(x)))
-                    display['consequents'] = display['consequents'].apply(lambda x: ', '.join(sorted(x)))
+                    display['antecedents'] = display['antecedents'].apply(
+                        lambda x: ', '.join(sorted([safe_str(i) for i in x]))
+                    )
+                    display['consequents'] = display['consequents'].apply(
+                        lambda x: ', '.join(sorted([safe_str(i) for i in x]))
+                    )
 
                     st.dataframe(
                         display[['antecedents', 'consequents', 'support',
@@ -790,14 +879,18 @@ with tab4:
                     )
 
                     st.caption(
-                        "**Support** = how often the rule appears. "
-                        "**Confidence** = reliability. "
-                        "**Lift > 1** = positive association (better than random)."
+                        "Support = how often the rule appears. "
+                        "Confidence = reliability. "
+                        "Lift > 1 = positive association (better than random)."
                     )
 
                     dl_rules = rules.copy()
-                    dl_rules['antecedents'] = dl_rules['antecedents'].apply(lambda x: ', '.join(sorted(x)))
-                    dl_rules['consequents'] = dl_rules['consequents'].apply(lambda x: ', '.join(sorted(x)))
+                    dl_rules['antecedents'] = dl_rules['antecedents'].apply(
+                        lambda x: ', '.join(sorted([safe_str(i) for i in x]))
+                    )
+                    dl_rules['consequents'] = dl_rules['consequents'].apply(
+                        lambda x: ', '.join(sorted([safe_str(i) for i in x]))
+                    )
                     st.download_button(
                         "Download Association Rules CSV",
                         dl_rules.to_csv(index=False).encode('utf-8'),
@@ -891,8 +984,8 @@ with tab5:
             "indigenous_access_summary.csv",
             "text/csv"
         )
-    except Exception:
-        pass
+    except Exception as e:
+        st.warning(f"Could not generate summary CSV: {e}")
 
 
 # ============================================================

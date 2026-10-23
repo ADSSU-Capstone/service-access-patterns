@@ -352,13 +352,11 @@ def _clean_frequency(val):
     s = safe_str(val).lower()
     if s in ('', 'nan', 'none'):
         return None
-    if s in ('no access',):
+    if s in ('no access', 'none'):
         return 'None'
     if 'full' in s:
         return 'Full'
-    if 'limited' in s or 'basic' in s or 'unimproved' in s:
-        return 'Limited'
-    if s == 'access':
+    if 'limited' in s or 'basic' in s or 'unimproved' in s or s == 'access':
         return 'Limited'
     return None
 
@@ -409,12 +407,51 @@ def preprocess_with_tracking(df):
     if 'service_frequency' in df.columns:
         df['service_frequency_clean'] = df['service_frequency'].apply(_clean_frequency)
 
+    civil_status_map = {
+        'merried': 'Married', 'married': 'Married',
+        'sapareted': 'Separated', 'separated': 'Separated',
+        'single': 'Single',
+        'common /live in': 'Common Law / Live-in',
+        'common/ live-in': 'Common Law / Live-in',
+        'common/live in': 'Common Law / Live-in',
+        'common /live-in': 'Common Law / Live-in',
+        'common/live-in': 'Common Law / Live-in',
+    }
+    if 'civil_status' in df.columns:
+        df['civil_status'] = df['civil_status'].apply(lambda x: civil_status_map.get(safe_str(x).lower(), safe_str(x).title()))
+
+    service_type_map = {
+        '4ps': '4Ps', '4ps ': '4Ps',
+        'livihood program': 'Livelihood Program',
+        'livelihood': 'Livelihood Program',
+        'medical assistant': 'Medical Assistance',
+        'medical assistance': 'Medical Assistance',
+        'emergency sherleter assistance': 'Emergency Shelter Assistance',
+        'senior citizens': 'Senior Citizens',
+        'senior high school program': 'Senior High School Program',
+        'nan': 'None', 'none': 'None'
+    }
+    if 'service_type' in df.columns:
+        df['service_type'] = df['service_type'].apply(lambda x: service_type_map.get(safe_str(x).lower(), safe_str(x).title()))
+
+    barrier_map = {
+        'low income': 'Low Income',
+        'low houseincome': 'Low Income',
+        'irregular income': 'Irregular Income',
+        'lack of transportation money': 'Lack of Transportation Money',
+        'lack of transportation money': 'Lack of Transportation Money',
+        'health setting': 'Health Setting',
+        'incorrect treatment': 'Incorrect Treatment',
+    }
+    for col in ['financial_barrier', 'distance_barrier', 'language_barrier', 'info_barrier']:
+        if col in df.columns:
+            df[col] = df[col].apply(lambda x: barrier_map.get(safe_str(x).lower(), safe_str(x).title()))
+
     categorical_cols = [
         'gender', 'barangay', 'tribe', 'employment_status',
-        'education_level', 'civil_status', 'access_transportation',
-        'access_electricity', 'access_internet', 'service_type',
-        'mode_of_access', 'financial_barrier', 'distance_barrier',
-        'language_barrier', 'info_barrier', 'service_frequency_clean'
+        'education_level', 'access_transportation',
+        'access_electricity', 'access_internet',
+        'mode_of_access', 'service_frequency_clean'
     ]
     for col in categorical_cols:
         if col in df.columns:
@@ -541,15 +578,17 @@ with tab0:
     st.subheader("Cleaning Rules Applied")
     rules_df = pd.DataFrame({
         'Rule': [
-            'Duplicate household entries across barangay records removed',
+            'Duplicate household entries removed',
             'Records with blank or invalid barangay labels dropped',
             'Barangay spelling normalized (Bunawan Brok to Bunawan Brook, Lmelda to Imelda)',
             'Gender spelling normalized (Famale to Female)',
             'Age extracted as a numeric value from free-text fields',
             'Household income parsed as a numeric value',
             'Service frequency mapped to Full, Limited, or None',
-            'Time spent accessing services converted to hours',
-            'Categorical text standardized to Title Case with whitespace trimmed'
+            'Time spent converted to hours',
+            'Civil status standardized (Merried to Married, Sapareted to Separated)',
+            'Service types standardized (4ps to 4Ps, Livihood program to Livelihood Program)',
+            'Barriers standardized (Low houseincome to Low Income, Lack of transportation money)'
         ]
     })
     st.dataframe(rules_df, use_container_width=True, hide_index=True)
@@ -574,7 +613,6 @@ with tab1:
             lambda x: BARANGAY_COORDS.get(x, (8.18, 126.00))[1]
         )
 
-        # Calculate center of map
         center_lat = bar_counts['lat'].mean()
         center_lon = bar_counts['lon'].mean()
 
@@ -1026,6 +1064,62 @@ with tab3:
             unsafe_allow_html=True
         )
 
+    st.markdown("#### Key Factors (Random Forest Feature Importance)")
+    if 'service_frequency_clean' in df_f.columns:
+        access_map = {'Full': 'High', 'Limited': 'Moderate', 'None': 'Low'}
+        model_df = df_f.copy()
+        model_df['target'] = model_df['service_frequency_clean'].map(access_map)
+        model_df = model_df[model_df['target'].notna()]
+
+        feature_cols = []
+        for col in ['age', 'household_size', 'income_weekly', 'time_spent_hours']:
+            if col in model_df.columns:
+                feature_cols.append(col)
+        for col in ['gender', 'education_level', 'employment_status',
+                    'access_transportation', 'access_electricity', 'access_internet',
+                    'civil_status', 'financial_barrier', 'distance_barrier',
+                    'language_barrier', 'info_barrier']:
+            if col in model_df.columns:
+                feature_cols.append(col)
+
+        if len(feature_cols) >= 3 and len(model_df) >= 50:
+            X = model_df[feature_cols].copy()
+            for col in X.columns:
+                converted = pd.to_numeric(X[col], errors='coerce')
+                if converted.notna().any():
+                    median_val = converted.median()
+                    if pd.isna(median_val):
+                        median_val = 0
+                    X[col] = converted.fillna(median_val)
+                else:
+                    X[col] = X[col].astype(str).apply(safe_str)
+                    X[col] = LabelEncoder().fit_transform(X[col])
+            y = model_df['target']
+
+            if y.nunique() >= 2:
+                rf = RandomForestClassifier(n_estimators=300, random_state=42, n_jobs=-1)
+                rf.fit(X, y)
+
+                importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=True)
+                fig, ax = plt.subplots(figsize=(9, 5))
+                importances.plot(kind='barh', color='#1f4e79', edgecolor='black', ax=ax)
+                ax.set_xlabel("Relative Importance")
+                ax.set_title("Random Forest Feature Importance")
+                plt.tight_layout()
+                st.pyplot(fig)
+                plt.close()
+
+                top_feature = importances.sort_values(ascending=False).index[0]
+                top_value = importances.sort_values(ascending=False).iloc[0]
+                st.markdown(
+                    f'<div class="interpretation"><b>Interpretation:</b> The strongest predictor of access level '
+                    f'in the current selection is <b>{top_feature}</b> with a relative importance of '
+                    f'{top_value:.3f}. The ranking indicates which socio-economic or barrier variables most '
+                    f'strongly separate high-access households from low-access households, and where policy '
+                    f'interventions would have the largest marginal effect.</div>',
+                    unsafe_allow_html=True
+                )
+
     st.markdown("#### Apriori Association Rule Mining")
     txn_cols = ['barangay', 'tribe', 'service_type', 'service_frequency_clean',
                 'mode_of_access', 'financial_barrier', 'distance_barrier',
@@ -1288,27 +1382,6 @@ with tab4:
                     'each actual access level is correctly or incorrectly predicted. The ROC curves show the '
                     'trade-off between true positive and false positive rates for each class. Curves closer to '
                     'the top-left corner indicate stronger discriminative ability for that class.</div>',
-                    unsafe_allow_html=True
-                )
-
-                st.markdown("#### Feature Importance — Random Forest")
-                importances = pd.Series(rf.feature_importances_, index=X.columns).sort_values(ascending=True)
-                fig, ax = plt.subplots(figsize=(9, 5))
-                importances.plot(kind='barh', color='#1f4e79', edgecolor='black', ax=ax)
-                ax.set_xlabel("Relative Importance")
-                ax.set_title("Random Forest Feature Importance")
-                plt.tight_layout()
-                st.pyplot(fig)
-                plt.close()
-
-                top_feature = importances.sort_values(ascending=False).index[0]
-                top_value = importances.sort_values(ascending=False).iloc[0]
-                st.markdown(
-                    f'<div class="interpretation"><b>Interpretation:</b> The strongest predictor of access level '
-                    f'in the current selection is <b>{top_feature}</b> with a relative importance of '
-                    f'{top_value:.3f}. The ranking indicates which socio-economic or barrier variables most '
-                    f'strongly separate high-access households from low-access households, and where policy '
-                    f'interventions would have the largest marginal effect.</div>',
                     unsafe_allow_html=True
                 )
 

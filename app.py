@@ -574,7 +574,7 @@ with tab1:
             lambda x: BARANGAY_COORDS.get(x, (8.18, 126.00))[1]
         )
 
-        fig_map = px.scatter_mapbox(
+        fig_map = px.scatter_map(
             bar_counts, lat='lat', lon='lon',
             size='Respondents', color='Respondents',
             color_continuous_scale='YlOrRd',
@@ -583,7 +583,7 @@ with tab1:
             zoom=11, height=460, size_max=42
         )
         fig_map.update_layout(
-            mapbox_style='open-street-map',
+            map_style='open-street-map',  # Changed from mapbox_style
             margin={'r': 0, 't': 0, 'l': 0, 'b': 0}
         )
         st.plotly_chart(fig_map, use_container_width=True)

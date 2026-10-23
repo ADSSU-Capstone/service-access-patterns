@@ -574,16 +574,21 @@ with tab1:
             lambda x: BARANGAY_COORDS.get(x, (8.18, 126.00))[1]
         )
 
+        # Calculate center of map
+        center_lat = bar_counts['lat'].mean()
+        center_lon = bar_counts['lon'].mean()
+
         fig_map = px.scatter_map(
             bar_counts, lat='lat', lon='lon',
             size='Respondents', color='Respondents',
             color_continuous_scale='YlOrRd',
             hover_name='Barangay',
             hover_data={'lat': False, 'lon': False},
-            zoom=11, height=460, size_max=42
+            zoom=10, height=460, size_max=42,
+            center={"lat": center_lat, "lon": center_lon}
         )
         fig_map.update_layout(
-            map_style='open-street-map',
+            map_style='carto-positron',
             margin={'r': 0, 't': 0, 'l': 0, 'b': 0}
         )
         st.plotly_chart(fig_map, use_container_width=True)

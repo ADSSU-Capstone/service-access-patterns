@@ -694,8 +694,8 @@ with tab1:
                 st.pyplot(fig)
                 plt.close()
                 st.markdown(
-                    f'<div class="interpretation"><b>Interpretation:</b> {vc.index[0]} respondents account for '
-                    f'{vc.iloc[0]:,} of {vc.sum():,} records ({vc.iloc[0]/vc.sum()*100:.1f}%). '
+                    f'<div class="interpretation"><b>Interpretation:</b> {vc.idxmax()} respondents account for '
+                    f'{vc.max():,} of {vc.sum():,} records ({vc.max()/vc.sum()*100:.1f}%). '
                     f'Gender composition informs whether service programs are reaching both groups equitably.</div>',
                     unsafe_allow_html=True
                 )
@@ -715,7 +715,7 @@ with tab1:
                 plt.close()
                 st.markdown(
                     f'<div class="interpretation"><b>Interpretation:</b> The most common education level is '
-                    f'{vc.index[-1]} ({vc.iloc[-1]:,} respondents). Educational attainment is a known correlate '
+                    f'{vc.idxmax()} ({vc.max():,} respondents). Educational attainment is a known correlate '
                     f'of service access because it affects awareness of programs and navigation of requirements.</div>',
                     unsafe_allow_html=True
                 )
@@ -732,7 +732,7 @@ with tab1:
                 plt.close()
                 st.markdown(
                     f'<div class="interpretation"><b>Interpretation:</b> The dominant employment category is '
-                    f'{vc.index[-1]} ({vc.iloc[-1]:,} respondents). Employment status conditions the economic '
+                    f'{vc.idxmax()} ({vc.max():,} respondents). Employment status conditions the economic '
                     f'capacity of households to absorb the indirect costs of service access.</div>',
                     unsafe_allow_html=True
                 )
@@ -805,8 +805,8 @@ with tab2:
             fig.update_layout(showlegend=False, height=420, yaxis={'categoryorder': 'total ascending'})
             st.plotly_chart(fig, use_container_width=True)
             st.markdown(
-                f'<div class="interpretation"><b>Interpretation:</b> {svc_counts.index[0]} is the most '
-                f'accessed service ({svc_counts.iloc[0]:,} respondents). The list reflects the dominant service '
+                f'<div class="interpretation"><b>Interpretation:</b> {svc_counts.idxmax()} is the most '
+                f'accessed service ({svc_counts.max():,} respondents). The list reflects the dominant service '
                 f'channels in the municipality and shows which programs are reaching the community.</div>',
                 unsafe_allow_html=True
             )
@@ -832,8 +832,8 @@ with tab2:
                 st.dataframe(freq_df, use_container_width=True)
             st.markdown(
                 f'<div class="interpretation"><b>Interpretation:</b> The dominant access frequency in the current '
-                f'selection is {freq.index[0]} ({freq.iloc[0]:,} respondents, '
-                f'{freq.iloc[0]/freq.sum()*100:.1f}%). This establishes the baseline distribution that the '
+                f'selection is {freq.idxmax()} ({freq.max():,} respondents, '
+                f'{freq.max()/freq.sum()*100:.1f}%). This establishes the baseline distribution that the '
                 f'classifier in the next tab is trained against.</div>',
                 unsafe_allow_html=True
             )
@@ -851,7 +851,7 @@ with tab2:
             st.plotly_chart(fig, use_container_width=True)
             st.markdown(
                 f'<div class="interpretation"><b>Interpretation:</b> The most common mode of access is '
-                f'{vc.index[0]} ({vc.iloc[0]:,} respondents). Mode of access reveals whether households '
+                f'{vc.idxmax()} ({vc.max():,} respondents). Mode of access reveals whether households '
                 f'rely on physical visits, intermediaries, or digital channels.</div>',
                 unsafe_allow_html=True
             )

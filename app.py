@@ -583,7 +583,7 @@ with tab1:
             zoom=11, height=460, size_max=42
         )
         fig_map.update_layout(
-            map_style='open-street-map',  # Changed from mapbox_style
+            map_style='open-street-map',
             margin={'r': 0, 't': 0, 'l': 0, 'b': 0}
         )
         st.plotly_chart(fig_map, use_container_width=True)
@@ -1146,11 +1146,15 @@ with tab4:
         else:
             X = model_df[feature_cols].copy()
             for col in X.columns:
-                if X[col].dtype == object:
-                    X[col] = X[col].apply(safe_str)
-                    X[col] = LabelEncoder().fit_transform(X[col])
+                converted = pd.to_numeric(X[col], errors='coerce')
+                if converted.notna().any():
+                    median_val = converted.median()
+                    if pd.isna(median_val):
+                        median_val = 0
+                    X[col] = converted.fillna(median_val)
                 else:
-                    X[col] = pd.to_numeric(X[col], errors='coerce').fillna(X[col].median())
+                    X[col] = X[col].astype(str).apply(safe_str)
+                    X[col] = LabelEncoder().fit_transform(X[col])
             y = model_df['target']
 
             class_counts = y.value_counts()
@@ -1184,10 +1188,9 @@ with tab4:
                 else:
                     y_prob_rf = None
 
-                lr = LogisticRegression(max_iter=2000, random_state=42, multi_class='auto')
+                lr = LogisticRegression(max_iter=2000, random_state=42)
                 lr.fit(X_train, y_train)
                 y_pred_lr = lr.predict(X_test)
-                y_prob_lr = lr.predict_proba(X_test)
 
                 acc_rf = accuracy_score(y_test, y_pred_rf)
                 prec_rf = precision_score(y_test, y_pred_rf, average='weighted', zero_division=0)
